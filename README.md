@@ -270,4 +270,4 @@ MIT License - 详见 [LICENSE](LICENSE) 文件
 
 - [AKShare文档](https://akshare.akfamily.xyz/)
 - [Tushare文档](https://tushare.pro/)
-- [Dash文档](https://dash.plotly.com/) 
+- [Dash文档](https://dash.plotly.com/)
