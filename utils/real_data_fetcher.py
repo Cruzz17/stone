@@ -268,3 +268,153 @@ class RealDataFetcher:
     def last_update_time(self, value):
         """设置最后更新时间"""
         self._last_update_time = value
+
+    def get_stock_data(self, symbol: str, start_date: str = None, end_date: str = None, limit: int = None) -> pd.DataFrame:
+        """
+        获取股票数据
+        
+        Args:
+            symbol: 股票代码
+            start_date: 开始日期
+            end_date: 结束日期
+            limit: 限制条数
+            
+        Returns:
+            股票数据DataFrame
+        """
+        try:
+            # 首先尝试从数据库获取
+            data = self.db_manager.get_stock_data(symbol, start_date, end_date, limit)
+            
+            if not data.empty:
+                return data
+            
+            # 如果数据库没有数据，尝试从网络获取
+            if start_date and end_date:
+                start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+                end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+                
+                if AKSHARE_AVAILABLE:
+                    data = self._fetch_real_data(symbol, start_dt, end_dt)
+                else:
+                    data = self._generate_mock_data(symbol, start_dt, end_dt)
+                
+                if not data.empty:
+                    # 保存到数据库
+                    self.db_manager.save_stock_data(symbol, data)
+                    return data
+            
+            return pd.DataFrame()
+            
+        except Exception as e:
+            logger.error(f"获取股票数据失败 {symbol}: {e}")
+            return pd.DataFrame()
+    
+    def calculate_technical_indicators(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        计算技术指标
+        
+        Args:
+            data: 股票数据DataFrame
+            
+        Returns:
+            包含技术指标的DataFrame
+        """
+        try:
+            if data.empty:
+                return data
+            
+            data = data.copy()
+            
+            # 移动平均线
+            data['ma5'] = data['close'].rolling(window=5).mean()
+            data['ma10'] = data['close'].rolling(window=10).mean()
+            data['ma20'] = data['close'].rolling(window=20).mean()
+            data['ma60'] = data['close'].rolling(window=60).mean()
+            
+            # RSI
+            delta = data['close'].diff()
+            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+            rs = gain / loss
+            data['rsi'] = 100 - (100 / (1 + rs))
+            
+            # MACD
+            exp1 = data['close'].ewm(span=12).mean()
+            exp2 = data['close'].ewm(span=26).mean()
+            data['macd'] = exp1 - exp2
+            data['macd_signal'] = data['macd'].ewm(span=9).mean()
+            data['macd_hist'] = data['macd'] - data['macd_signal']
+            
+            # 布林带
+            data['bb_middle'] = data['close'].rolling(window=20).mean()
+            bb_std = data['close'].rolling(window=20).std()
+            data['bb_upper'] = data['bb_middle'] + (bb_std * 2)
+            data['bb_lower'] = data['bb_middle'] - (bb_std * 2)
+            
+            # KDJ
+            low_min = data['low'].rolling(window=9).min()
+            high_max = data['high'].rolling(window=9).max()
+            rsv = (data['close'] - low_min) / (high_max - low_min) * 100
+            data['k'] = rsv.ewm(com=2).mean()
+            data['d'] = data['k'].ewm(com=2).mean()
+            data['j'] = 3 * data['k'] - 2 * data['d']
+            
+            return data
+            
+        except Exception as e:
+            logger.error(f"计算技术指标失败: {e}")
+            return data
+    
+    def get_index_data(self, index_code: str, start_date: str, end_date: str) -> pd.DataFrame:
+        """
+        获取指数数据
+        
+        Args:
+            index_code: 指数代码
+            start_date: 开始日期
+            end_date: 结束日期
+            
+        Returns:
+            指数数据DataFrame
+        """
+        try:
+            if not AKSHARE_AVAILABLE:
+                # 如果AKShare不可用，生成模拟指数数据
+                start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+                end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+                return self._generate_mock_data(index_code, start_dt, end_dt)
+            
+            # 获取指数历史数据
+            data = ak.stock_zh_index_daily(symbol=index_code)
+            
+            if data.empty:
+                return pd.DataFrame()
+            
+            # 重命名列
+            data = data.rename(columns={
+                'date': 'date',
+                'open': 'open',
+                'high': 'high',
+                'low': 'low',
+                'close': 'close',
+                'volume': 'volume'
+            })
+            
+            # 确保数据类型正确
+            data['date'] = pd.to_datetime(data['date'])
+            data.set_index('date', inplace=True)
+            
+            # 筛选日期范围
+            start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+            end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+            data = data[(data.index >= start_dt) & (data.index <= end_dt)]
+            
+            return data[['open', 'high', 'low', 'close', 'volume']]
+            
+        except Exception as e:
+            logger.error(f"获取指数数据失败 {index_code}: {e}")
+            # 返回模拟数据作为备用
+            start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+            end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+            return self._generate_mock_data(index_code, start_dt, end_dt)

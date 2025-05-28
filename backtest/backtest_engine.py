@@ -12,7 +12,7 @@ import seaborn as sns
 from loguru import logger
 
 from strategies.base_strategy import BaseStrategy, Signal
-from utils.data_fetcher import DataFetcher
+from utils.real_data_fetcher import RealDataFetcher
 
 
 class BacktestEngine:
@@ -54,7 +54,8 @@ class BacktestEngine:
                     symbols: List[str],
                     start_date: str,
                     end_date: str,
-                    data_fetcher: DataFetcher,
+                    data_fetcher: Optional[RealDataFetcher] = None,
+                    historical_data: Optional[Dict[str, pd.DataFrame]] = None,
                     benchmark: str = "000001.SH") -> Dict[str, Any]:
         """
         运行回测
@@ -64,7 +65,8 @@ class BacktestEngine:
             symbols: 股票代码列表
             start_date: 开始日期
             end_date: 结束日期
-            data_fetcher: 数据获取器
+            data_fetcher: 数据获取器（可选）
+            historical_data: 历史数据字典（可选）
             benchmark: 基准指数
             
         Returns:
@@ -75,8 +77,13 @@ class BacktestEngine:
         # 重置回测状态
         self._reset_backtest()
         
-        # 获取基准数据
-        benchmark_data = data_fetcher.get_index_data(benchmark, start_date, end_date)
+        # 获取基准数据（如果有数据获取器的话）
+        benchmark_data = pd.DataFrame()
+        if data_fetcher:
+            try:
+                benchmark_data = data_fetcher.get_index_data(benchmark, start_date, end_date)
+            except:
+                logger.warning("无法获取基准数据，将使用空基准")
         
         # 为每个股票运行回测
         all_signals = []
@@ -85,13 +92,27 @@ class BacktestEngine:
         for symbol in symbols:
             try:
                 # 获取股票数据
-                data = data_fetcher.get_stock_data(symbol, start_date, end_date)
+                if historical_data and symbol in historical_data:
+                    # 使用提供的历史数据
+                    data = historical_data[symbol].copy()
+                elif data_fetcher:
+                    # 使用数据获取器
+                    data = data_fetcher.get_stock_data(symbol, start_date, end_date)
+                else:
+                    logger.error(f"没有提供{symbol}的数据源")
+                    continue
+                
                 if data.empty:
                     logger.warning(f"无法获取{symbol}的数据")
                     continue
                 
                 # 计算技术指标
-                data = data_fetcher.calculate_technical_indicators(data)
+                if data_fetcher:
+                    data = data_fetcher.calculate_technical_indicators(data)
+                else:
+                    # 如果没有数据获取器，使用简单的技术指标计算
+                    data = self._calculate_basic_indicators(data)
+                
                 stock_data[symbol] = data
                 
                 # 生成交易信号
@@ -543,4 +564,32 @@ class BacktestEngine:
         最终资产: {metrics['final_value']:,.2f}
         """
         
-        return summary 
+        return summary
+    
+    def _calculate_basic_indicators(self, data: pd.DataFrame) -> pd.DataFrame:
+        """计算基本技术指标"""
+        try:
+            # 移动平均线
+            data['ma5'] = data['close'].rolling(window=5).mean()
+            data['ma10'] = data['close'].rolling(window=10).mean()
+            data['ma20'] = data['close'].rolling(window=20).mean()
+            data['ma60'] = data['close'].rolling(window=60).mean()
+            
+            # RSI
+            delta = data['close'].diff()
+            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+            rs = gain / loss
+            data['rsi'] = 100 - (100 / (1 + rs))
+            
+            # MACD
+            exp1 = data['close'].ewm(span=12).mean()
+            exp2 = data['close'].ewm(span=26).mean()
+            data['macd'] = exp1 - exp2
+            data['macd_signal'] = data['macd'].ewm(span=9).mean()
+            data['macd_hist'] = data['macd'] - data['macd_signal']
+            
+            return data
+        except Exception as e:
+            logger.error(f"计算技术指标失败: {e}")
+            return data 
