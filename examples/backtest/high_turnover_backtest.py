@@ -1,22 +1,31 @@
 #!/usr/bin/env python3
 """
-高换手率股票策略回测
-拉取过去一个月换手率最高的100只股票，进行策略回测
+高换手率股票回测系统
+专注于高频交易和短期收益策略
 """
 
+import os
+import sys
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import time
+import json
 from loguru import logger
 import matplotlib.pyplot as plt
 import seaborn as sns
+
+# 添加项目根目录到Python路径
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, project_root)
 
 # 导入项目模块
 from data.database import DatabaseManager
 from utils.real_data_fetcher import RealDataFetcher
 from backtest.backtest_engine import BacktestEngine
+
+# 导入所有策略
 from strategies.double_ma_strategy import DoubleMaStrategy
 from strategies.rsi_strategy import RSIStrategy
 from strategies.macd_strategy import MACDStrategy
@@ -64,8 +73,8 @@ class HighTurnoverBacktest:
         logger.info(f"开始获取过去{days}天换手率最高的{top_n}只股票...")
         
         if not AKSHARE_AVAILABLE:
-            logger.warning("AKShare不可用，使用模拟股票池")
-            return self._get_mock_high_turnover_stocks(top_n)
+            logger.warning("AKShare不可用，使用优化的模拟股票池")
+            return self._get_optimized_stock_pool(top_n)
         
         try:
             # 获取所有A股基本信息
@@ -94,11 +103,13 @@ class HighTurnoverBacktest:
                             turnover_rate = turnover_row.iloc[0]['value']
                             try:
                                 turnover_rate = float(turnover_rate.replace('%', ''))
-                                turnover_data.append({
-                                    'code': stock_code,
-                                    'name': stock_name,
-                                    'turnover_rate': turnover_rate
-                                })
+                                # 筛选合理换手率范围：2%-15%（避免过度投机）
+                                if 2.0 <= turnover_rate <= 15.0:
+                                    turnover_data.append({
+                                        'code': stock_code,
+                                        'name': stock_name,
+                                        'turnover_rate': turnover_rate
+                                    })
                             except:
                                 continue
                     
@@ -120,13 +131,13 @@ class HighTurnoverBacktest:
             # 按换手率排序
             turnover_df = pd.DataFrame(turnover_data)
             if turnover_df.empty:
-                logger.warning("未获取到换手率数据，使用模拟数据")
-                return self._get_mock_high_turnover_stocks(top_n)
+                logger.warning("未获取到换手率数据，使用优化的模拟数据")
+                return self._get_optimized_stock_pool(top_n)
             
             turnover_df = turnover_df.sort_values('turnover_rate', ascending=False)
             top_stocks = turnover_df.head(top_n)
             
-            logger.info(f"换手率最高的{top_n}只股票:")
+            logger.info(f"筛选出的优质活跃股票{top_n}只:")
             for _, row in top_stocks.head(10).iterrows():
                 logger.info(f"  {row['code']} {row['name']}: {row['turnover_rate']:.2f}%")
             
@@ -135,42 +146,69 @@ class HighTurnoverBacktest:
             
         except Exception as e:
             logger.error(f"获取高换手率股票失败: {e}")
-            return self._get_mock_high_turnover_stocks(top_n)
+            return self._get_optimized_stock_pool(top_n)
     
-    def _get_mock_high_turnover_stocks(self, top_n: int) -> List[str]:
-        """获取模拟的高换手率股票"""
-        # 使用一些活跃的股票作为示例
-        mock_stocks = [
-            '000001', '000002', '000858', '002415', '002594', '002714', '300059',
-            '300122', '300124', '300142', '300144', '300251', '300274', '300296',
-            '300316', '300347', '300408', '300433', '300454', '300496',
-            '600000', '600036', '600519', '600887', '601318', '601398', '601857',
-            '002230', '002241', '002252', '002304', '002352', '002371', '002405',
-            '002456', '002475', '002493', '002508', '002555', '002558',
-            '000063', '000069', '000100', '000157', '000166', '000338', '000425',
-            '000503', '000538', '000568', '000623', '000651', '000703', '000725',
-            '000768', '000776', '000783', '000792', '000839', '000876',
-            '300003', '300015', '300017', '300027', '300033', '300070', '300072',
-            '300073', '300104', '300113', '300136', '300146', '300168', '300182',
-            '300207', '300226', '300253', '300271', '300285', '300315',
-            '600009', '600010', '600015', '600028', '600030', '600031', '600048',
-            '600050', '600061', '600066', '600085', '600089', '600104', '600111',
-            '600115', '600118', '600150', '600161', '600170', '600177'
-        ]
+    def _get_optimized_stock_pool(self, top_n: int) -> List[str]:
+        """获取优化的股票池 - 平衡活跃度和质量"""
+        # 按板块分类的优质股票池
+        stock_pool = {
+            # 大盘蓝筹股（稳定性好，适合长期持有）
+            '金融银行': ['000001', '600036', '600000', '601318', '000002', '600016'],
+            '央企国企': ['600519', '000858', '601857', '600887', '601398', '600031'],
+            
+            # 科技成长股（成长性好，适度活跃）
+            '科技龙头': ['002415', '300059', '300124', '002230', '300142', '300015'],
+            '新能源': ['002594', '300750', '002475', '300274', '300316', '002304'],
+            
+            # 消费医药股（防御性好）
+            '消费品': ['000063', '000568', '002352', '000725', '600276', '000876'],
+            '医药生物': ['300015', '300142', '002241', '000538', '300347', '002558'],
+            
+            # 制造业（周期性适中）
+            '先进制造': ['002371', '002405', '300296', '300408', '002493', '000425'],
+            '新材料': ['002555', '300251', '002714', '300454', '000100', '000157'],
+            
+            # 新兴产业（适度投机）
+            '人工智能': ['300496', '300433', '002252', '300144', '000069', '000338'],
+            '新基建': ['600166', '002508', '300122', '601857', '000503', '000166']
+        }
         
-        # 随机选择并模拟换手率
-        selected_stocks = mock_stocks[:min(top_n, len(mock_stocks))]
-        logger.info(f"使用模拟高换手率股票池: {len(selected_stocks)}只股票")
+        # 按权重选择股票
+        selected_stocks = []
+        weights = {
+            '金融银行': 0.20,    # 20% - 稳定基础
+            '央企国企': 0.15,    # 15% - 价值支撑
+            '科技龙头': 0.20,    # 20% - 成长动力
+            '新能源': 0.15,      # 15% - 热点题材
+            '消费医药': 0.10,    # 10% - 防御配置
+            '制造业': 0.10,      # 10% - 周期平衡
+            '新兴产业': 0.10     # 10% - 适度投机
+        }
+        
+        for sector, weight in weights.items():
+            sector_count = max(1, int(top_n * weight))
+            if sector in stock_pool:
+                sector_stocks = stock_pool[sector][:sector_count]
+                selected_stocks.extend(sector_stocks)
+        
+        # 确保数量符合要求
+        selected_stocks = selected_stocks[:top_n]
+        
+        logger.info(f"使用优化的股票池: {len(selected_stocks)}只股票")
+        logger.info("股票池构成:")
+        for sector, weight in weights.items():
+            sector_count = max(1, int(top_n * weight))
+            logger.info(f"  {sector}: {weight*100:.0f}% ({sector_count}只)")
         
         self.high_turnover_stocks = selected_stocks
         return selected_stocks
     
-    def download_stock_data(self, days: int = 60) -> Dict[str, pd.DataFrame]:
+    def download_stock_data(self, days: int = 180) -> Dict[str, pd.DataFrame]:
         """
         下载股票历史数据
         
         Args:
-            days: 下载天数
+            days: 下载天数（默认半年180天）
             
         Returns:
             股票数据字典
@@ -191,7 +229,7 @@ class HighTurnoverBacktest:
                     end_date.strftime('%Y-%m-%d')
                 )
                 
-                if not data.empty and len(data) >= 20:  # 至少20个交易日
+                if not data.empty and len(data) >= 60:  # 至少60个交易日（约3个月）
                     # 计算技术指标
                     data = self.data_fetcher.calculate_technical_indicators(data)
                     stock_data[symbol] = data
@@ -226,30 +264,34 @@ class HighTurnoverBacktest:
         Returns:
             回测结果
         """
-        logger.info(f"开始运行策略回测，股票数量: {len(stock_data)}")
+        logger.info(f"开始运行优化策略回测，股票数量: {len(stock_data)}")
         
-        # 定义策略 - 使用更激进的参数
+        # 定义策略 - 使用更稳健的市场化参数
         strategies = {}
         
         if strategy_name in ['double_ma', 'all']:
-            strategies['双均线策略'] = DoubleMaStrategy({
-                'short_window': 3,    # 3天短期均线
-                'long_window': 8      # 8天长期均线
+            strategies['稳健双均线策略'] = DoubleMaStrategy({
+                'short_window': 10,   # 10日短期均线（更稳定）
+                'long_window': 30     # 30日长期均线（趋势确认）
             })
         
         if strategy_name in ['rsi', 'all']:
-            strategies['RSI策略'] = RSIStrategy({
-                'rsi_period': 6,      # 6天RSI
-                'oversold': 40,       # 40超卖线
-                'overbought': 60      # 60超买线
+            strategies['经典RSI策略'] = RSIStrategy({
+                'rsi_period': 14,     # 标准14日RSI
+                'oversold': 30,       # 30超卖线（经典参数）
+                'overbought': 70      # 70超买线（经典参数）
             })
         
         if strategy_name in ['macd', 'all']:
-            strategies['MACD策略'] = MACDStrategy({
-                'fast_period': 8,     # 8天快线
-                'slow_period': 16,    # 16天慢线
-                'signal_period': 6    # 6天信号线
+            strategies['标准MACD策略'] = MACDStrategy({
+                'fast_period': 12,    # 标准12日快线
+                'slow_period': 26,    # 标准26日慢线
+                'signal_period': 9    # 标准9日信号线
             })
+        
+        # 新增：趋势跟踪策略
+        if strategy_name in ['trend', 'all']:
+            strategies['趋势跟踪策略'] = self._create_trend_following_strategy()
         
         # 计算回测期间
         all_dates = []
@@ -274,13 +316,15 @@ class HighTurnoverBacktest:
             logger.info(f"正在回测策略: {strategy_name}")
             
             try:
-                # 修复参数传递 - 使用正确的参数名
-                result = self.backtest_engine.run_backtest(
+                # 使用优化的回测引擎
+                optimized_engine = self._create_optimized_backtest_engine()
+                
+                result = optimized_engine.run_backtest(
                     strategy=strategy,
-                    symbols=symbols,  # 使用symbols参数
+                    symbols=symbols,
                     start_date=start_date,
                     end_date=end_date,
-                    historical_data=stock_data  # 使用historical_data参数
+                    historical_data=stock_data
                 )
                 
                 results[strategy_name] = result
@@ -301,6 +345,25 @@ class HighTurnoverBacktest:
         
         self.backtest_results = results
         return results
+    
+    def _create_optimized_backtest_engine(self):
+        """创建优化的回测引擎"""
+        return BacktestEngine(
+            initial_capital=1000000,    # 100万初始资金
+            commission_rate=0.0003,     # 万3手续费
+            stamp_tax_rate=0.001,       # 千1印花税
+            min_trade_unit=100          # 最小交易单位
+        )
+    
+    def _create_trend_following_strategy(self):
+        """创建趋势跟踪策略"""
+        # 这里可以实现一个简单的趋势跟踪策略
+        # 暂时返回MACD策略作为替代
+        return MACDStrategy({
+            'fast_period': 12,
+            'slow_period': 26,
+            'signal_period': 9
+        })
     
     def analyze_results(self) -> pd.DataFrame:
         """分析回测结果"""
@@ -323,7 +386,7 @@ class HighTurnoverBacktest:
                 '胜率': f"{metrics['win_rate']:.2%}",
                 '盈亏比': f"{metrics['profit_loss_ratio']:.2f}",
                 '交易次数': metrics['total_trades'],
-                '最终资产': f"{metrics['final_value']:,.0f}"
+                '最终资产': f"{metrics['final_value']:,.0f}元"
             })
         
         comparison_df = pd.DataFrame(comparison_data)
@@ -438,8 +501,8 @@ class HighTurnoverBacktest:
             stocks_df.to_csv(stocks_file, index=False, encoding='utf-8-sig')
             logger.info(f"高换手率股票列表已导出到: {stocks_file}")
     
-    def run_complete_backtest(self, days: int = 30, top_n: int = 100, 
-                            strategy: str = 'all', data_days: int = 60):
+    def run_complete_backtest(self, days: int = 30, top_n: int = 50, 
+                            strategy: str = 'all', data_days: int = 180):
         """
         运行完整的回测流程
         
@@ -447,31 +510,32 @@ class HighTurnoverBacktest:
             days: 统计换手率的天数
             top_n: 选择前N只高换手率股票
             strategy: 策略名称
-            data_days: 下载数据的天数
+            data_days: 下载数据的天数（默认半年180天）
         """
         logger.info("=" * 60)
-        logger.info("开始高换手率股票策略回测")
+        logger.info("开始优化版高换手率股票策略回测")
+        logger.info(f"数据周期: {data_days}天 (约{data_days//30}个月)")
         logger.info("=" * 60)
         
         try:
-            # 1. 获取高换手率股票
-            logger.info("步骤1: 获取高换手率股票")
+            # 1. 获取优化的股票池
+            logger.info("步骤1: 获取优化的活跃股票池")
             high_turnover_stocks = self.get_high_turnover_stocks(days, top_n)
             
             if not high_turnover_stocks:
-                logger.error("未获取到高换手率股票，退出")
+                logger.error("未获取到股票，退出")
                 return
             
-            # 2. 下载股票数据
-            logger.info("步骤2: 下载股票历史数据")
+            # 2. 下载半年历史数据
+            logger.info("步骤2: 下载半年历史数据")
             stock_data = self.download_stock_data(data_days)
             
             if not stock_data:
                 logger.error("未获取到股票数据，退出")
                 return
             
-            # 3. 运行策略回测
-            logger.info("步骤3: 运行策略回测")
+            # 3. 运行优化策略回测
+            logger.info("步骤3: 运行优化策略回测")
             results = self.run_strategy_backtest(stock_data, strategy)
             
             if not results:
@@ -491,7 +555,7 @@ class HighTurnoverBacktest:
             self.export_results()
             
             logger.info("=" * 60)
-            logger.info("高换手率股票策略回测完成！")
+            logger.info("优化版高换手率股票策略回测完成！")
             logger.info("=" * 60)
             
         except Exception as e:
@@ -504,12 +568,12 @@ def main():
     # 创建回测系统
     backtest_system = HighTurnoverBacktest()
     
-    # 运行完整回测
+    # 运行优化的完整回测
     backtest_system.run_complete_backtest(
         days=30,        # 统计过去30天的换手率
-        top_n=50,       # 选择前50只股票（减少数量以提高速度）
-        strategy='all', # 测试所有策略
-        data_days=60    # 下载60天的历史数据
+        top_n=40,       # 选择40只优质股票（平衡多样性和管理难度）
+        strategy='all', # 测试所有优化策略
+        data_days=180   # 下载半年历史数据（约6个月）
     )
 
 

@@ -1,0 +1,50 @@
+{
+  "布林带策略": {
+    "total_days": 1,
+    "total_signals": 1,
+    "avg_daily_signals": 1.0,
+    "max_daily_signals": 1,
+    "signal_frequency": 1.0,
+    "avg_active_stocks": 1.0
+  },
+  "优化双均线策略": {
+    "total_days": 1,
+    "total_signals": 2,
+    "avg_daily_signals": 2.0,
+    "max_daily_signals": 2,
+    "signal_frequency": 1.0,
+    "avg_active_stocks": 2.0
+  },
+  "快速MACD策略": {
+    "total_days": 1,
+    "total_signals": 5,
+    "avg_daily_signals": 5.0,
+    "max_daily_signals": 5,
+    "signal_frequency": 1.0,
+    "avg_active_stocks": 5.0
+  },
+  "KDJ策略": {
+    "total_days": 1,
+    "total_signals": 4,
+    "avg_daily_signals": 4.0,
+    "max_daily_signals": 4,
+    "signal_frequency": 1.0,
+    "avg_active_stocks": 4.0
+  },
+  "动态RSI策略": {
+    "total_days": 1,
+    "total_signals": 9,
+    "avg_daily_signals": 9.0,
+    "max_daily_signals": 9,
+    "signal_frequency": 1.0,
+    "avg_active_stocks": 9.0
+  },
+  "智能组合策略": {
+    "total_days": 1,
+    "total_signals": 0,
+    "avg_daily_signals": 0.0,
+    "max_daily_signals": 0,
+    "signal_frequency": 0.0,
+    "avg_active_stocks": 0.0
+  }
+}

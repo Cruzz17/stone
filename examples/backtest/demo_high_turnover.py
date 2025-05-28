@@ -1,8 +1,31 @@
 #!/usr/bin/env python3
 """
-高换手率股票回测系统演示
-展示如何使用系统进行股票策略回测
+高换手率股票策略演示
+展示如何使用系统进行高换手率股票的策略回测
 """
+
+import os
+import sys
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+from typing import List, Dict, Any
+import time
+from loguru import logger
+
+# 添加项目根目录到Python路径
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, project_root)
+
+# 导入项目模块
+from data.database import DatabaseManager
+from utils.real_data_fetcher import RealDataFetcher
+from backtest.backtest_engine import BacktestEngine
+
+# 导入策略
+from strategies.double_ma_strategy import DoubleMaStrategy
+from strategies.rsi_strategy import RSIStrategy
+from strategies.macd_strategy import MACDStrategy
 
 from datetime import datetime
 

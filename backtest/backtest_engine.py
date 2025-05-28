@@ -164,15 +164,27 @@ class BacktestEngine:
         position = self.positions[symbol]
         
         if signal.signal_type.lower() == 'buy':
-            # 买入
+            # 买入 - 优化资金分配策略
+            
+            # 如果信号没有指定数量，使用智能分配
+            if signal.quantity == 0 or signal.quantity is None:
+                # 计算建议仓位：每只股票分配总资金的2-5%
+                target_position_value = self.initial_capital * 0.03  # 3%的仓位
+                signal.quantity = int(target_position_value / signal.price)
+                signal.quantity = (signal.quantity // self.min_trade_unit) * self.min_trade_unit
+            
+            # 确保最小交易单位
+            if signal.quantity < self.min_trade_unit:
+                signal.quantity = self.min_trade_unit
+            
             trade_amount = signal.price * signal.quantity
             commission = trade_amount * self.commission_rate
             total_cost = trade_amount + commission
             
             # 检查资金是否充足
             if total_cost > self.current_capital:
-                # 调整买入数量
-                available_amount = self.current_capital * 0.95  # 保留5%现金
+                # 调整买入数量 - 使用更积极的资金利用率
+                available_amount = self.current_capital * 0.90  # 使用90%的可用资金
                 adjusted_quantity = int(available_amount / (signal.price * (1 + self.commission_rate)))
                 adjusted_quantity = (adjusted_quantity // self.min_trade_unit) * self.min_trade_unit
                 
@@ -216,6 +228,10 @@ class BacktestEngine:
             if sell_quantity == 0:
                 logger.warning(f"无持仓，无法卖出{symbol}")
                 return
+            
+            # 如果信号没有指定卖出数量，卖出全部持仓
+            if signal.quantity == 0 or signal.quantity is None:
+                sell_quantity = position['quantity']
             
             trade_amount = signal.price * sell_quantity
             commission = trade_amount * self.commission_rate

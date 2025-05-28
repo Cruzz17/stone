@@ -5,6 +5,17 @@ Stone量化交易系统 - 快速开始
 
 import sys
 import os
+from datetime import datetime, timedelta
+
+# 添加项目根目录到Python路径
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_root)
+
+# 导入项目模块
+from data.database import DatabaseManager
+from utils.real_data_fetcher import RealDataFetcher
+from backtest.backtest_engine import BacktestEngine
+from strategies.double_ma_strategy import DoubleMaStrategy
 
 def main():
     """主函数"""
