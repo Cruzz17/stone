@@ -187,7 +187,7 @@ class BacktestEngine:
         
         position = self.positions[symbol]
         
-        if signal.signal_type == 'buy':
+        if signal.signal_type.lower() == 'buy':
             # 买入
             trade_amount = signal.price * signal.quantity
             commission = trade_amount * self.commission_rate
@@ -234,7 +234,7 @@ class BacktestEngine:
             }
             self.trades.append(trade_record)
             
-        elif signal.signal_type == 'sell':
+        elif signal.signal_type.lower() == 'sell':
             # 卖出
             sell_quantity = min(signal.quantity, position['quantity'])
             if sell_quantity == 0:
