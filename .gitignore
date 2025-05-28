@@ -116,7 +116,7 @@ ehthumbs.db
 Thumbs.db
 
 # Project specific
-data/
+
 logs/
 results/
 exports/
