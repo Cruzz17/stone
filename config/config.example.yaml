@@ -1,0 +1,108 @@
+# 沪A量化交易系统配置文件
+
+# 数据源配置
+data_sources:
+  akshare:
+    enabled: true
+    timeout: 30
+  tushare:
+    enabled: false
+    token: "your_tushare_token_here"
+  
+# 数据库配置
+database:
+  type: "sqlite"
+  path: "data/trading.db"
+  
+# 交易配置
+trading:
+  # 交易模式: simulation(模拟) / live(实盘)
+  mode: "simulation"
+  # 初始资金
+  initial_capital: 100000
+  # 手续费率
+  commission_rate: 0.0003
+  # 印花税率
+  stamp_tax_rate: 0.001
+  # 最小交易单位
+  min_trade_unit: 100
+  
+# 风险管理
+risk_management:
+  # 最大单日亏损比例
+  max_daily_loss: 0.05
+  # 最大单笔交易金额比例
+  max_position_size: 0.2
+  # 止损比例
+  stop_loss: 0.1
+  # 止盈比例
+  take_profit: 0.2
+  
+# 策略配置
+strategies:
+  # 默认启用的策略
+  enabled_strategies:
+    - "double_ma"
+    - "rsi"
+  
+  # 策略参数
+  double_ma:
+    short_window: 5
+    long_window: 20
+    
+  rsi:
+    period: 14
+    oversold: 30
+    overbought: 70
+    
+  macd:
+    fast_period: 12
+    slow_period: 26
+    signal_period: 9
+    
+  bollinger_bands:
+    period: 20
+    std_dev: 2
+    
+# 回测配置
+backtest:
+  # 回测开始日期
+  start_date: "2023-01-01"
+  # 回测结束日期
+  end_date: "2024-01-01"
+  # 基准指数
+  benchmark: "000001.SH"  # 上证指数
+  
+# Web界面配置
+web:
+  host: "127.0.0.1"
+  port: 8050
+  debug: true
+  
+# API配置
+api:
+  host: "127.0.0.1"
+  port: 8000
+  
+# 日志配置
+logging:
+  level: "INFO"
+  file: "logs/trading.log"
+  max_size: "10MB"
+  backup_count: 5
+  
+# 股票池配置
+stock_pool:
+  # 默认关注的股票代码
+  default_stocks:
+    - "000001.SZ"  # 平安银行
+    - "000002.SZ"  # 万科A
+    - "600000.SH"  # 浦发银行
+    - "600036.SH"  # 招商银行
+    - "600519.SH"  # 贵州茅台
+  
+  # 股票筛选条件
+  filters:
+    min_market_cap: 1000000000  # 最小市值10亿
+    max_pe_ratio: 50           # 最大市盈率
+    min_volume: 1000000        # 最小成交量 

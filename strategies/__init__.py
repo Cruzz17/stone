@@ -1,0 +1,1 @@
+# Strategies package for quantitative trading system 
