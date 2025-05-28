@@ -49,14 +49,7 @@ class BacktestEngine:
         
         logger.info(f"回测引擎初始化完成，初始资金: {initial_capital:,.2f}")
     
-    def run_backtest(self, 
-                    strategy: BaseStrategy,
-                    symbols: List[str],
-                    start_date: str,
-                    end_date: str,
-                    data_fetcher: Optional[RealDataFetcher] = None,
-                    historical_data: Optional[Dict[str, pd.DataFrame]] = None,
-                    benchmark: str = "000001.SH") -> Dict[str, Any]:
+    def run_backtest(self, strategy, symbols, start_date, end_date, historical_data=None):
         """
         运行回测
         
@@ -65,25 +58,15 @@ class BacktestEngine:
             symbols: 股票代码列表
             start_date: 开始日期
             end_date: 结束日期
-            data_fetcher: 数据获取器（可选）
-            historical_data: 历史数据字典（可选）
-            benchmark: 基准指数
-            
-        Returns:
-            回测结果
+            historical_data: 历史数据字典 (可选)
         """
         logger.info(f"开始回测: {strategy.name}, 股票: {symbols}, 期间: {start_date} - {end_date}")
         
         # 重置回测状态
         self._reset_backtest()
         
-        # 获取基准数据（如果有数据获取器的话）
+        # 获取基准数据（暂时使用空基准）
         benchmark_data = pd.DataFrame()
-        if data_fetcher:
-            try:
-                benchmark_data = data_fetcher.get_index_data(benchmark, start_date, end_date)
-            except:
-                logger.warning("无法获取基准数据，将使用空基准")
         
         # 为每个股票运行回测
         all_signals = []
@@ -95,9 +78,6 @@ class BacktestEngine:
                 if historical_data and symbol in historical_data:
                     # 使用提供的历史数据
                     data = historical_data[symbol].copy()
-                elif data_fetcher:
-                    # 使用数据获取器
-                    data = data_fetcher.get_stock_data(symbol, start_date, end_date)
                 else:
                     logger.error(f"没有提供{symbol}的数据源")
                     continue
@@ -107,11 +87,7 @@ class BacktestEngine:
                     continue
                 
                 # 计算技术指标
-                if data_fetcher:
-                    data = data_fetcher.calculate_technical_indicators(data)
-                else:
-                    # 如果没有数据获取器，使用简单的技术指标计算
-                    data = self._calculate_basic_indicators(data)
+                data = self._calculate_basic_indicators(data)
                 
                 stock_data[symbol] = data
                 

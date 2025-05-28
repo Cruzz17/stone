@@ -228,17 +228,28 @@ class HighTurnoverBacktest:
         """
         logger.info(f"开始运行策略回测，股票数量: {len(stock_data)}")
         
-        # 定义策略
+        # 定义策略 - 使用更激进的参数
         strategies = {}
         
         if strategy_name in ['double_ma', 'all']:
-            strategies['双均线策略'] = DoubleMaStrategy({'short_window': 5, 'long_window': 20})
+            strategies['双均线策略'] = DoubleMaStrategy({
+                'short_window': 3,    # 3天短期均线
+                'long_window': 8      # 8天长期均线
+            })
         
         if strategy_name in ['rsi', 'all']:
-            strategies['RSI策略'] = RSIStrategy({'rsi_period': 14, 'oversold': 30, 'overbought': 70})
+            strategies['RSI策略'] = RSIStrategy({
+                'rsi_period': 6,      # 6天RSI
+                'oversold': 40,       # 40超卖线
+                'overbought': 60      # 60超买线
+            })
         
         if strategy_name in ['macd', 'all']:
-            strategies['MACD策略'] = MACDStrategy({'fast_period': 12, 'slow_period': 26, 'signal_period': 9})
+            strategies['MACD策略'] = MACDStrategy({
+                'fast_period': 8,     # 8天快线
+                'slow_period': 16,    # 16天慢线
+                'signal_period': 6    # 6天信号线
+            })
         
         # 计算回测期间
         all_dates = []
@@ -263,12 +274,13 @@ class HighTurnoverBacktest:
             logger.info(f"正在回测策略: {strategy_name}")
             
             try:
+                # 修复参数传递 - 使用正确的参数名
                 result = self.backtest_engine.run_backtest(
                     strategy=strategy,
-                    symbols=symbols,
+                    symbols=symbols,  # 使用symbols参数
                     start_date=start_date,
                     end_date=end_date,
-                    historical_data=stock_data
+                    historical_data=stock_data  # 使用historical_data参数
                 )
                 
                 results[strategy_name] = result

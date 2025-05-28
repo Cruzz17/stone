@@ -21,11 +21,11 @@ class DoubleMaStrategy(BaseStrategy):
         Args:
             config: 策略配置
         """
-        super().__init__("double_ma", config)
+        super().__init__("双均线策略", config)
         
-        # 策略参数
-        self.short_window = config.get('short_window', 5)
-        self.long_window = config.get('long_window', 20)
+        # 使用更激进的参数
+        self.short_window = config.get('short_window', 3)  # 改为3天
+        self.long_window = config.get('long_window', 8)    # 改为8天
         
         # 验证参数
         if self.short_window >= self.long_window:
@@ -46,82 +46,42 @@ class DoubleMaStrategy(BaseStrategy):
         """
         signals = []
         
-        # 验证数据
-        if not self.validate_data(data):
-            return signals
-        
-        # 数据长度检查
         if len(data) < self.long_window:
-            logger.warning(f"数据长度不足，需要至少{self.long_window}条记录")
             return signals
-        
+            
         # 计算移动平均线
-        data = data.copy()
-        data[f'ma_{self.short_window}'] = data['close'].rolling(window=self.short_window).mean()
-        data[f'ma_{self.long_window}'] = data['close'].rolling(window=self.long_window).mean()
+        data['ma_short'] = data['close'].rolling(window=self.short_window).mean()
+        data['ma_long'] = data['close'].rolling(window=self.long_window).mean()
         
-        # 计算金叉死叉信号
-        data['ma_diff'] = data[f'ma_{self.short_window}'] - data[f'ma_{self.long_window}']
-        data['ma_diff_prev'] = data['ma_diff'].shift(1)
-        
-        # 去除NaN值
-        data = data.dropna()
-        
-        if data.empty:
-            return signals
-        
-        # 获取当前持仓
-        current_position = self.get_current_position(symbol)
-        
-        # 遍历数据生成信号
-        for i, (date, row) in enumerate(data.iterrows()):
-            current_price = row['close']
-            ma_diff = row['ma_diff']
-            ma_diff_prev = row['ma_diff_prev']
+        # 生成交易信号
+        for i in range(self.long_window, len(data)):
+            current_short = data['ma_short'].iloc[i]
+            current_long = data['ma_long'].iloc[i]
+            prev_short = data['ma_short'].iloc[i-1]
+            prev_long = data['ma_long'].iloc[i-1]
             
-            # 金叉信号（短期均线上穿长期均线）
-            if ma_diff > 0 and ma_diff_prev <= 0:
-                # 买入信号
-                if current_position['quantity'] == 0:  # 当前无持仓
-                    quantity = self.calculate_position_size(
-                        symbol, current_price, 100000  # 假设可用资金10万
-                    )
-                    
-                    signal = Signal(
-                        symbol=symbol,
-                        signal_type='buy',
-                        price=current_price,
-                        quantity=quantity,
-                        timestamp=date,
-                        confidence=self._calculate_signal_confidence(row),
-                        reason=f"金叉买入: MA{self.short_window}({row[f'ma_{self.short_window}']:.2f}) > MA{self.long_window}({row[f'ma_{self.long_window}']:.2f})"
-                    )
-                    signals.append(signal)
-                    
-                    # 更新持仓
-                    self.update_position(symbol, signal)
-                    current_position = self.get_current_position(symbol)
-            
-            # 死叉信号（短期均线下穿长期均线）
-            elif ma_diff < 0 and ma_diff_prev >= 0:
-                # 卖出信号
-                if current_position['quantity'] > 0:  # 当前有持仓
-                    signal = Signal(
-                        symbol=symbol,
-                        signal_type='sell',
-                        price=current_price,
-                        quantity=current_position['quantity'],  # 全部卖出
-                        timestamp=date,
-                        confidence=self._calculate_signal_confidence(row),
-                        reason=f"死叉卖出: MA{self.short_window}({row[f'ma_{self.short_window}']:.2f}) < MA{self.long_window}({row[f'ma_{self.long_window}']:.2f})"
-                    )
-                    signals.append(signal)
-                    
-                    # 更新持仓
-                    self.update_position(symbol, signal)
-                    current_position = self.get_current_position(symbol)
-        
-        logger.info(f"双均线策略为{symbol}生成了{len(signals)}个信号")
+            # 金叉：短期均线上穿长期均线
+            if prev_short <= prev_long and current_short > current_long:
+                signal = Signal(
+                    symbol=symbol,
+                    signal_type='BUY',
+                    price=data['close'].iloc[i],
+                    quantity=1000,  # 固定数量
+                    timestamp=data.index[i]
+                )
+                signals.append(signal)
+                
+            # 死叉：短期均线下穿长期均线  
+            elif prev_short >= prev_long and current_short < current_long:
+                signal = Signal(
+                    symbol=symbol,
+                    signal_type='SELL',
+                    price=data['close'].iloc[i],
+                    quantity=1000,
+                    timestamp=data.index[i]
+                )
+                signals.append(signal)
+                
         return signals
     
     def _calculate_signal_confidence(self, row: pd.Series) -> float:

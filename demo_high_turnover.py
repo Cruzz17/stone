@@ -4,9 +4,8 @@
 展示如何使用系统进行股票策略回测
 """
 
-import sys
 from datetime import datetime
-from loguru import logger
+
 
 def demo_quick_test():
     """演示快速测试功能"""

@@ -120,47 +120,32 @@ class RealDataFetcher:
 
     def _generate_mock_data(self, symbol: str, start_date: datetime, end_date: datetime) -> pd.DataFrame:
         """生成模拟数据"""
-        dates = pd.date_range(start=start_date, end=end_date, freq='D')
-        dates = [d for d in dates if d.weekday() < 5]  # 只保留工作日
-
-        if not dates:
-            return pd.DataFrame()
-
+        date_range = pd.date_range(start=start_date, end=end_date, freq='D')
+        # 过滤掉周末
+        date_range = [d for d in date_range if d.weekday() < 5]
+        
         # 生成模拟价格数据
-        np.random.seed(hash(symbol) % 2 ** 32)
-        base_price = 10 + (hash(symbol) % 100)
-
+        np.random.seed(hash(symbol) % 2**32)  # 基于股票代码生成固定随机种子
+        base_price = 10 + (hash(symbol) % 100)  # 基础价格
+        
         prices = []
         current_price = base_price
-
-        for _ in dates:
-            # 随机波动
-            change = np.random.normal(0, 0.02)
-            current_price *= (1 + change)
-            current_price = max(current_price, 1.0)  # 确保价格不为负
-
-            # 生成OHLC数据
-            high = current_price * (1 + abs(np.random.normal(0, 0.01)))
-            low = current_price * (1 - abs(np.random.normal(0, 0.01)))
-            open_price = low + (high - low) * np.random.random()
-            close_price = current_price
-            volume = int(np.random.uniform(1000000, 10000000))
-
-            prices.append({
-                'open': round(open_price, 2),
-                'high': round(high, 2),
-                'low': round(low, 2),
-                'close': round(close_price, 2),
-                'volume': volume
-            })
-
-        data = pd.DataFrame(prices)
-        data['date'] = dates
         
-        # 设置日期为索引
-        data.set_index('date', inplace=True)
-
-        return data[['open', 'high', 'low', 'close', 'volume']]
+        for _ in date_range:
+            # 模拟价格波动
+            change = np.random.normal(0, 0.02)  # 2%的日波动
+            current_price *= (1 + change)
+            prices.append(current_price)
+        
+        data = pd.DataFrame({
+            'open': [p * (1 + np.random.normal(0, 0.005)) for p in prices],
+            'high': [p * (1 + abs(np.random.normal(0, 0.01))) for p in prices],
+            'low': [p * (1 - abs(np.random.normal(0, 0.01))) for p in prices],
+            'close': prices,
+            'volume': [np.random.randint(1000000, 10000000) for _ in prices]
+        }, index=date_range)
+        
+        return data
 
     def start_real_time_update(self, interval: int = 30):
         """启动实时数据更新"""
@@ -269,46 +254,51 @@ class RealDataFetcher:
         """设置最后更新时间"""
         self._last_update_time = value
 
-    def get_stock_data(self, symbol: str, start_date: str = None, end_date: str = None, limit: int = None) -> pd.DataFrame:
-        """
-        获取股票数据
-        
-        Args:
-            symbol: 股票代码
-            start_date: 开始日期
-            end_date: 结束日期
-            limit: 限制条数
-            
-        Returns:
-            股票数据DataFrame
-        """
+    def get_stock_data(self, symbol, start_date, end_date):
+        """获取股票数据"""
         try:
-            # 首先尝试从数据库获取
-            data = self.db_manager.get_stock_data(symbol, start_date, end_date, limit)
+            # 添加更多错误处理和重试机制
+            import akshare as ak
+            import time
             
-            if not data.empty:
-                return data
-            
-            # 如果数据库没有数据，尝试从网络获取
-            if start_date and end_date:
-                start_dt = datetime.strptime(start_date, '%Y-%m-%d')
-                end_dt = datetime.strptime(end_date, '%Y-%m-%d')
-                
-                if AKSHARE_AVAILABLE:
-                    data = self._fetch_real_data(symbol, start_dt, end_dt)
-                else:
-                    data = self._generate_mock_data(symbol, start_dt, end_dt)
-                
-                if not data.empty:
-                    # 保存到数据库
-                    self.db_manager.save_stock_data(symbol, data)
-                    return data
-            
-            return pd.DataFrame()
+            # 重试机制
+            for attempt in range(3):
+                try:
+                    # 使用akshare获取数据
+                    data = ak.stock_zh_a_hist(
+                        symbol=symbol, 
+                        period="daily", 
+                        start_date=start_date.replace('-', ''), 
+                        end_date=end_date.replace('-', ''),
+                        adjust="qfq"
+                    )
+                    
+                    if data is not None and len(data) > 0:
+                        # 数据预处理
+                        data = data.rename(columns={
+                            '日期': 'date',
+                            '开盘': 'open', 
+                            '收盘': 'close',
+                            '最高': 'high',
+                            '最低': 'low',
+                            '成交量': 'volume'
+                        })
+                        data['date'] = pd.to_datetime(data['date'])
+                        data = data.set_index('date')
+                        return data
+                        
+                except Exception as e:
+                    logger.warning(f"第{attempt+1}次获取{symbol}数据失败: {e}")
+                    if attempt < 2:
+                        time.sleep(1)  # 等待1秒后重试
+                        
+            # 如果真实数据获取失败，返回模拟数据
+            logger.warning(f"无法获取{symbol}真实数据，使用模拟数据")
+            return self._generate_mock_data(symbol, start_date, end_date)
             
         except Exception as e:
-            logger.error(f"获取股票数据失败 {symbol}: {e}")
-            return pd.DataFrame()
+            logger.error(f"获取{symbol}数据时发生错误: {e}")
+            return self._generate_mock_data(symbol, start_date, end_date)
     
     def calculate_technical_indicators(self, data: pd.DataFrame) -> pd.DataFrame:
         """

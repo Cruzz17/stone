@@ -143,8 +143,8 @@ risk_management:
 strategies:
   double_ma:
     weight: 0.4
-    short_period: 5
-    long_period: 20
+    short_period: 3
+    long_period: 10
   rsi:
     weight: 0.3
     period: 14
@@ -169,7 +169,16 @@ class MyStrategy(BaseStrategy):
         super().__init__("my_strategy", config)
     
     def generate_signals(self, data, symbol):
-        # 实现你的策略逻辑
+        print(f"数据长度: {len(data)}")
+        print(f"MA5最后值: {data['ma5'].iloc[-1]:.2f}")
+        print(f"MA20最后值: {data['ma20'].iloc[-1]:.2f}")
+        print(f"RSI最后值: {data['rsi'].iloc[-1]:.2f}")
+        
+        # 检查是否有交叉
+        if len(data) >= 2:
+            ma5_cross = data['ma5'].iloc[-1] > data['ma20'].iloc[-1]
+            ma5_cross_prev = data['ma5'].iloc[-2] > data['ma20'].iloc[-2]
+            print(f"MA交叉状态: 当前={ma5_cross}, 前一日={ma5_cross_prev}")
         signals = []
         # ... 策略代码 ...
         return signals
@@ -279,15 +288,26 @@ data_fetcher = RealDataFetcher(db_manager)
 backtest_engine = BacktestEngine(initial_capital=1000000)
 
 # 创建策略
-strategy = MACDStrategy({
-    'fast_period': 12,
-    'slow_period': 26, 
-    'signal_period': 9
-})
+strategies = {
+    '双均线策略': DoubleMaStrategy({
+        'short_window': 2,    # 极短期（2天）
+        'long_window': 5      # 短期（5天）
+    }),
+    'RSI策略': RSIStrategy({
+        'rsi_period': 5,      # 极短周期
+        'oversold': 45,       # 很宽松的阈值
+        'overbought': 55      # 很宽松的阈值
+    }),
+    'MACD策略': MACDStrategy({
+        'fast_period': 6,     # 快速参数
+        'slow_period': 12,
+        'signal_period': 4
+    })
+}
 
 # 运行回测
 result = backtest_engine.run_backtest(
-    strategy=strategy,
+    strategies=strategies,
     symbols=['000001', '000002'],
     start_date='2024-01-01',
     end_date='2024-12-31'
